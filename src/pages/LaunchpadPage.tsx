@@ -257,9 +257,21 @@ export const LaunchpadPage: React.FC = () => {
 
     setIsInvesting(true);
     try {
-      // Sign message challenge simulation
+      // Build the authorization message
       const message = `Sign this message to authorize your investment of $${amountNum} ${selectedStablecoin} into project ${selectedProject.name}.`;
-      const signature = '0xMOCKSIGNATURE_TXHASH_' + Math.random().toString(36).slice(2, 12);
+
+      // Get a real MetaMask signature
+      let signature = '';
+      try {
+        const ethersModule = await import('ethers');
+        const browserProvider = new ethersModule.BrowserProvider((window as any).ethereum);
+        const signer = await browserProvider.getSigner();
+        signature = await signer.signMessage(message);
+      } catch (sigErr: any) {
+        addToast('warning', 'Signature Cancelled', sigErr.message || 'You cancelled the signing request.');
+        setIsInvesting(false);
+        return;
+      }
 
       const res = await fetch(`${API_URL}/invest`, {
         method: 'POST',
@@ -283,16 +295,7 @@ export const LaunchpadPage: React.FC = () => {
         addToast('error', 'Investment Failed', data.error || 'Verification error.');
       }
     } catch {
-      // Simulate success
-      addToast('success', 'Investment Successful (Simulated)', `Deposited $${amountNum} ${selectedStablecoin}.`);
-      if (whitelistStatus) {
-        setWhitelistStatus(prev => prev ? {
-          ...prev,
-          remainingAllocation: prev.remainingAllocation - amountNum,
-          totalInvested: prev.totalInvested + amountNum
-        } : null);
-      }
-      setInvestAmount('');
+      addToast('error', 'Investment Error', 'Network error — please try again.');
     } finally {
       setIsInvesting(false);
     }
