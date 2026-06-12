@@ -51,18 +51,17 @@ export const AccountPage: React.FC = () => {
   const fetchTransactions = async () => {
     if (!user.walletAddress) return;
     try {
-      const res = await fetch(`${API_URL}/account/transactions?wallet=${user.walletAddress}`);
+      const token = localStorage.getItem('token');
+      if (!token) return;
+      const res = await fetch(`${API_URL}/account/transactions`, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
       if (res.ok) {
         const data = await res.json();
         setTransactions(data.transactions || []);
       }
     } catch {
-      // Mock transactions fallback
-      setTransactions([
-        { id: '1', type: 'deposit', amount: 5000, stablecoinType: 'USDC', txHash: '0x3fa...71c', status: 'confirmed', createdAt: new Date(Date.now() - 172800000).toISOString() },
-        { id: '2', type: 'deposit', amount: 2500, stablecoinType: 'USDT', txHash: '0x9ae...20b', status: 'confirmed', createdAt: new Date(Date.now() - 86400000).toISOString() },
-        { id: '3', type: 'deposit', amount: 1000, stablecoinType: 'DAI', txHash: '0x0cd...ff1', status: 'confirmed', createdAt: new Date().toISOString() }
-      ]);
+      console.warn('Failed to fetch transactions');
     }
   };
 
@@ -154,7 +153,15 @@ export const AccountPage: React.FC = () => {
         throw new Error(errData.error || 'Request rejected');
       }
     } catch (err: any) {
-      // Simulation fallback if API not running
+      // If this is an API error (thrown from the else branch), show the real error
+      if (err.message && !err.message.includes('fetch') && !err.message.includes('Failed') && !err.message.includes('NetworkError')) {
+        addToast('error', 'Transaction Failed', err.message);
+        setIsLoading(false);
+        return;
+      }
+
+      // Network error fallback — simulate locally only when backend is truly unreachable
+      console.warn('Backend unreachable, simulating locally:', err);
       const currentBal = stablecoinType === 'USDC' ? usdcBalance : stablecoinType === 'USDT' ? usdtBalance : daiBalance;
       if (activeTab !== 'deposit' && val > currentBal) {
         addToast('error', 'Insufficient Funds', 'Balance too low.');
@@ -166,7 +173,7 @@ export const AccountPage: React.FC = () => {
         if (stablecoinType === 'USDC') setUsdcBalance(p => p + val);
         else if (stablecoinType === 'USDT') setUsdtBalance(p => p + val);
         else setDaiBalance(p => p + val);
-        addToast('success', 'Deposit Completed (Simulated)', `Added $${val} ${stablecoinType}.`);
+        addToast('success', 'Deposit Completed (Simulated)', `Added $${val} ${stablecoinType}. Connect to backend for referral rewards.`);
       } else {
         if (stablecoinType === 'USDC') setUsdcBalance(p => p - val);
         else if (stablecoinType === 'USDT') setUsdtBalance(p => p - val);

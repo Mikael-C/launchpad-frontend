@@ -114,6 +114,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  // Auto-register referral when user is connected (handles both fresh login AND already-connected users)
+  useEffect(() => {
+    const refCode = localStorage.getItem('referral_code');
+    const token = localStorage.getItem('token');
+    if (refCode && token && user.isConnected && user.walletAddress) {
+      fetch(`${API_URL}/referral/register`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ code: refCode })
+      })
+        .then(res => {
+          if (res.ok || res.status === 409) {
+            // 409 means already registered — either way, clear the code
+            localStorage.removeItem('referral_code');
+          }
+        })
+        .catch(() => { /* registration is retried on next page load */ });
+    }
+  }, [user.isConnected, user.walletAddress]);
+
   const connectWallet = (address: string, role: 'user' | 'admin' | 'super_admin' = 'user') => {
     localStorage.setItem('wallet_address', address);
     localStorage.setItem('wallet_role', role);
