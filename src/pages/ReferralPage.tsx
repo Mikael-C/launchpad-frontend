@@ -10,6 +10,7 @@ interface ReferralLink {
   id: string;
   code: string;
   platform: string;
+  url: string;
   clickCount: number;
   status: string;
   reward: number;
@@ -148,7 +149,12 @@ export const ReferralPage: React.FC = () => {
         fetchReferralLinks();
       } else {
         const data = await res.json();
-        addToast('error', 'Generation Failed', data.error || 'Server error.');
+        if (res.status === 409) {
+          addToast('warning', 'Link Exists', data.error || `Referral link for ${platform} already exists. See your links below.`);
+          fetchReferralLinks();
+        } else {
+          addToast('error', 'Generation Failed', data.error || 'Server error.');
+        }
       }
     } catch {
       // Mock local success
@@ -178,8 +184,8 @@ export const ReferralPage: React.FC = () => {
     }
   };
 
-  const handleCopyLink = (code: string) => {
-    const fullLink = `${window.location.origin}/register?ref=${code}`;
+  const handleCopyLink = (code: string, url?: string) => {
+    const fullLink = url || `${window.location.origin}/register?ref=${code}`;
     navigator.clipboard.writeText(fullLink);
     setCopiedCode(code);
     addToast('info', 'Link Copied', 'Referral link copied to clipboard.');
@@ -362,7 +368,7 @@ export const ReferralPage: React.FC = () => {
                             <code style={{ fontSize: '0.8rem', color: 'var(--accent-secondary)' }}>{link.code}</code>
                             <button 
                               style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--text-muted)' }}
-                              onClick={() => handleCopyLink(link.code)}
+                              onClick={() => handleCopyLink(link.code, link.url)}
                             >
                               {copiedCode === link.code ? <Check size={12} style={{ color: 'var(--accent-green)' }} /> : <ExternalLink size={12} />}
                             </button>
