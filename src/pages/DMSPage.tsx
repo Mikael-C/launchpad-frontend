@@ -3,7 +3,7 @@ import { useApp } from '../context/AppContext';
 import { Topbar } from '../components/Topbar';
 import { Toast } from '../components/Toast';
 import type { ToastMessage } from '../components/Toast';
-import { Cpu, Shield, ShieldCheck, Play, AlertOctagon, Key, Lock, Unlock } from 'lucide-react';
+import { Cpu, Shield, ShieldCheck, Play, AlertOctagon, Key, Lock, Unlock, Smartphone, CheckCircle } from 'lucide-react';
 import { API_URL } from '../config';
 
 // DPoP Web Crypto Helpers
@@ -83,6 +83,14 @@ export const DMSPage: React.FC = () => {
   // DPoP Simulator State
   const [dpopTestResult, setDpopTestResult] = useState<string | null>(null);
   const [dpopTestStatus, setDpopTestStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  // TOTP/2FA State
+  const [totpStep, setTotpStep] = useState<'idle' | 'setup' | 'verify' | 'enabled'>('idle');
+  const [totpSecret, setTotpSecret] = useState<string>('');
+  const [totpOtpAuthUrl, setTotpOtpAuthUrl] = useState<string>('');
+  const [totpCode, setTotpCode] = useState<string>('');
+  const [totpLoading, setTotpLoading] = useState<boolean>(false);
+  const [totpError, setTotpError] = useState<string>('');
 
   const addToast = (type: ToastMessage['type'], title: string, message: string) => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -230,6 +238,97 @@ export const DMSPage: React.FC = () => {
       setDpopTestStatus('error');
       setDpopTestResult(`Network Error: ${err.message}`);
       addToast('error', 'Test Error', 'Failed to connect to backend.');
+    }
+  };
+
+  // Check if TOTP is already enabled on mount
+  React.useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || !user.isConnected) return;
+    
+    fetch(`${API_URL}/auth/me`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data?.totpEnabled) {
+          setTotpStep('enabled');
+        }
+      })
+      .catch(() => {});
+  }, [user.isConnected]);
+
+  // TOTP Setup — generates secret + QR code
+  const handleTotpSetup = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      addToast('warning', 'Auth Required', 'Please connect your wallet first.');
+      return;
+    }
+
+    setTotpLoading(true);
+    setTotpError('');
+    try {
+      const res = await fetch(`${API_URL}/auth/totp/setup`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (!res.ok) throw new Error('Setup failed');
+
+      const data = await res.json();
+      setTotpSecret(data.secret);
+      setTotpOtpAuthUrl(data.otpAuthUrl);
+      setTotpStep('setup');
+      addToast('success', '2FA Setup Started', 'Scan the QR code with your authenticator app.');
+    } catch (err) {
+      setTotpError('Failed to initialize TOTP setup.');
+      addToast('error', 'Setup Failed', 'Could not generate TOTP secret.');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  // TOTP Verify — confirms the 6-digit code and enables 2FA
+  const handleTotpVerify = async () => {
+    if (totpCode.length !== 6) {
+      setTotpError('Please enter a 6-digit code.');
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    setTotpLoading(true);
+    setTotpError('');
+    try {
+      const res = await fetch(`${API_URL}/auth/totp/verify`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({ totpCode })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setTotpError(data.error || 'Verification failed.');
+        addToast('error', 'Invalid Code', data.error || 'The code you entered is incorrect.');
+        return;
+      }
+
+      setTotpStep('enabled');
+      setTotpCode('');
+      addToast('success', '🔒 2FA Enabled!', 'TOTP two-factor authentication is now active on your account.');
+    } catch (err) {
+      setTotpError('Network error during verification.');
+    } finally {
+      setTotpLoading(false);
     }
   };
 
@@ -411,6 +510,178 @@ export const DMSPage: React.FC = () => {
                 </div>
               </div>
             )}
+
+            {/* TOTP / Two-Factor Authentication Card */}
+            <div className="card" style={{ padding: '24px' }}>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '1.1rem', marginBottom: '16px' }}>
+                <Smartphone size={18} style={{ color: totpStep === 'enabled' ? 'var(--accent-green)' : 'var(--accent-secondary)' }} />
+                Two-Factor Authentication (TOTP)
+                {totpStep === 'enabled' && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontSize: '0.75rem',
+                    fontWeight: 600,
+                    color: 'var(--accent-green)',
+                    background: 'rgba(0, 255, 136, 0.1)',
+                    border: '1px solid rgba(0, 255, 136, 0.3)',
+                    padding: '4px 10px',
+                    borderRadius: '20px'
+                  }}>
+                    <CheckCircle size={12} /> ENABLED
+                  </span>
+                )}
+              </h3>
+
+              {totpStep === 'idle' && (
+                <div>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '16px', lineHeight: '1.5' }}>
+                    Add an extra layer of security to your account. When enabled, you'll need a 6-digit code from your authenticator app (Google Authenticator, Authy) to log in.
+                  </p>
+                  <button
+                    className="btn btn-primary btn-full"
+                    onClick={handleTotpSetup}
+                    disabled={totpLoading || !user.isConnected}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <Key size={16} />
+                    {totpLoading ? 'Setting Up...' : 'Set Up 2FA'}
+                  </button>
+                  {!user.isConnected && (
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', marginTop: '12px', textAlign: 'center' }}>
+                      * Connect your wallet to enable 2FA.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {totpStep === 'setup' && (
+                <div>
+                  {/* Step 1: QR Code */}
+                  <div style={{
+                    background: 'rgba(255, 255, 255, 0.95)',
+                    borderRadius: '12px',
+                    padding: '20px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    marginBottom: '16px'
+                  }}>
+                    <p style={{ color: '#333', fontSize: '0.8rem', fontWeight: 600, marginBottom: '12px' }}>
+                      Scan with Authenticator App
+                    </p>
+                    <img
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(totpOtpAuthUrl)}`}
+                      alt="TOTP QR Code"
+                      style={{ width: '180px', height: '180px', borderRadius: '8px' }}
+                    />
+                  </div>
+
+                  {/* Step 2: Manual Entry Key */}
+                  <div style={{
+                    background: 'var(--bg-glass)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '8px',
+                    padding: '12px',
+                    marginBottom: '16px'
+                  }}>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.7rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '6px' }}>
+                      Manual Entry Key
+                    </p>
+                    <code style={{
+                      display: 'block',
+                      fontFamily: 'monospace',
+                      fontSize: '0.95rem',
+                      fontWeight: 'bold',
+                      color: 'var(--accent-secondary)',
+                      letterSpacing: '2px',
+                      wordBreak: 'break-all',
+                      userSelect: 'all',
+                      cursor: 'text'
+                    }}>
+                      {totpSecret}
+                    </code>
+                  </div>
+
+                  {/* Step 3: Verification Input */}
+                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', marginBottom: '10px' }}>
+                    Enter the 6-digit code from your authenticator app:
+                  </p>
+                  <div style={{ display: 'flex', gap: '10px', marginBottom: '12px' }}>
+                    <input
+                      type="text"
+                      className="form-input"
+                      value={totpCode}
+                      onChange={e => {
+                        const val = e.target.value.replace(/\D/g, '').slice(0, 6);
+                        setTotpCode(val);
+                        setTotpError('');
+                      }}
+                      placeholder="000000"
+                      maxLength={6}
+                      style={{
+                        fontFamily: 'monospace',
+                        fontSize: '1.4rem',
+                        textAlign: 'center',
+                        letterSpacing: '8px',
+                        fontWeight: 'bold',
+                        flex: 1
+                      }}
+                      autoFocus
+                    />
+                  </div>
+
+                  {totpError && (
+                    <p style={{ color: 'var(--accent-red)', fontSize: '0.8rem', marginBottom: '12px' }}>
+                      {totpError}
+                    </p>
+                  )}
+
+                  <button
+                    className="btn btn-primary btn-full"
+                    onClick={handleTotpVerify}
+                    disabled={totpLoading || totpCode.length !== 6}
+                    style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+                  >
+                    <ShieldCheck size={16} />
+                    {totpLoading ? 'Verifying...' : 'Verify & Enable 2FA'}
+                  </button>
+                </div>
+              )}
+
+              {totpStep === 'enabled' && (
+                <div>
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    padding: '20px',
+                    gap: '12px'
+                  }}>
+                    <div style={{
+                      width: '56px',
+                      height: '56px',
+                      borderRadius: '50%',
+                      background: 'rgba(0, 255, 136, 0.1)',
+                      border: '2px solid var(--accent-green)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <ShieldCheck size={28} style={{ color: 'var(--accent-green)' }} />
+                    </div>
+                    <p style={{ color: 'var(--accent-green)', fontWeight: 600, fontSize: '1rem' }}>
+                      Two-Factor Authentication Active
+                    </p>
+                    <p style={{ color: 'var(--text-secondary)', fontSize: '0.8rem', textAlign: 'center', lineHeight: '1.5' }}>
+                      Your account requires a 6-digit code from your authenticator app on every login. This protects against unauthorized access even if your wallet key is compromised.
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Right Column: Reports & DPoP Simulator */}
