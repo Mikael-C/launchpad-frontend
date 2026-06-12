@@ -100,6 +100,9 @@ export const AccountPage: React.FC = () => {
 
       if (activeTab === 'deposit') {
         endpoint = `${API_URL}/account/deposit`;
+        // Send referral code so backend can auto-register+complete in one step
+        const refCode = localStorage.getItem('referral_code');
+        if (refCode) body.referralCode = refCode;
       } else if (activeTab === 'withdraw') {
         endpoint = `${API_URL}/account/withdraw`;
         body.toAddress = destAddress || user.walletAddress;
@@ -130,6 +133,7 @@ export const AccountPage: React.FC = () => {
           if (resData.referralReward) {
             setUsdcBalance(prev => prev + resData.referralReward.reward);
             addToast('success', '🎉 Referral Reward!', `You and your referrer each earned $${resData.referralReward.reward} USDC!`);
+            localStorage.removeItem('referral_code');
           }
         } else {
           // Check balances
