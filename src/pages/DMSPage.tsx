@@ -155,7 +155,7 @@ export const DMSPage: React.FC = () => {
   };
 
   // Recalculate Trust Score based on toggled simulation parameters
-  const handleSimulationChange = (
+  const handleSimulationChange = async (
     jb: boolean,
     emu: boolean,
     hk: boolean,
@@ -173,7 +173,36 @@ export const DMSPage: React.FC = () => {
       issues.push('All system integrity assertions verified clean.');
     }
 
+    // Update local state immediately for responsive UI
     updateDeviceTrust(score, issues);
+
+    // Also persist to backend
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const res = await fetch(`${API_URL}/dms/integrity-check`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            isJailbroken: jb,
+            isEmulator: emu,
+            hasHooking: hk,
+            hasDebugger: db
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.remediationTriggered) {
+            addToast('error', '🚨 Auto-Remediation', 'Backend revoked all sessions and quarantined the device.');
+          }
+        }
+      } catch {
+        // Backend call is best-effort — local state already updated
+      }
+    }
 
     if (score < 50) {
       addToast('error', 'Device Quarantined', `Trust score dropped to ${score}. Device session keys revoked.`);
@@ -186,9 +215,8 @@ export const DMSPage: React.FC = () => {
 
   // Run the DPoP Security Verification Test
   const runDpopTest = async (testType: 'valid' | 'missing' | 'forged') => {
-    const sessionToken = localStorage.getItem('dms_session_token');
-    if (!sessionToken) {
-      addToast('warning', 'Session Required', 'Please enroll a device first to establish a DPoP-bound session.');
+    if (!user.isConnected) {
+      addToast('warning', 'Wallet Required', 'Please connect your wallet first.');
       return;
     }
 
@@ -196,19 +224,51 @@ export const DMSPage: React.FC = () => {
     setDpopTestResult(null);
 
     try {
+      const loginToken = localStorage.getItem('token');
+      if (!loginToken) {
+        addToast('warning', 'Auth Required', 'Please log in first.');
+        return;
+      }
+
+      // Step 1: Re-bind the current DPoP key pair to the server session
+      // This ensures the key matches even after page refresh
+      const keyPair = await getOrCreateDPoPKeys();
+      const jwk = await window.crypto.subtle.exportKey('jwk', keyPair.publicKey);
+
+      const rebindRes = await fetch(`${API_URL}/dms/dpop-rebind`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${loginToken}`
+        },
+        body: JSON.stringify({ dpopPublicKeyJwk: { kty: jwk.kty, crv: jwk.crv, x: jwk.x, y: jwk.y } })
+      });
+
+      if (!rebindRes.ok) {
+        const err = await rebindRes.json();
+        throw new Error(err.error || 'Failed to rebind DPoP keys');
+      }
+
+      const rebindData = await rebindRes.json();
+      const sessionToken = rebindData.accessToken;
+
+      // Store for reference
+      localStorage.setItem('dms_session_token', sessionToken);
+      localStorage.setItem('dms_dpop_jkt', rebindData.dpopJkt);
+
+      // Step 2: Make the actual DPoP-protected request
+      const url = `${API_URL}/dms/dpop-test`;
       const headers: Record<string, string> = {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${sessionToken}`
       };
 
-      const url = `${API_URL}/dms/status`;
-
       if (testType === 'valid') {
-        const keyPair = await getOrCreateDPoPKeys();
+        // Use the SAME key pair that was just bound
         const proof = await generateDPoPProof('GET', url, keyPair);
         headers['DPoP'] = proof;
       } else if (testType === 'forged') {
-        // Sign using a completely different, fresh key pair (simulating forged keys)
+        // Use a DIFFERENT key pair (simulating an attacker with stolen token but wrong keys)
         const attackerKeyPair = await window.crypto.subtle.generateKey(
           { name: 'ECDSA', namedCurve: 'P-256' },
           true,
@@ -216,7 +276,8 @@ export const DMSPage: React.FC = () => {
         );
         const proof = await generateDPoPProof('GET', url, attackerKeyPair);
         headers['DPoP'] = proof;
-      } // 'missing' does not add any DPoP header
+      }
+      // 'missing' = no DPoP header at all (stolen token, no proof)
 
       const res = await fetch(url, { method: 'GET', headers });
       const data = await res.json();
@@ -224,20 +285,22 @@ export const DMSPage: React.FC = () => {
       if (res.ok) {
         setDpopTestStatus('success');
         setDpopTestResult(JSON.stringify(data, null, 2));
-        addToast('success', 'Request Authorized', 'Valid DPoP proof successfully verified by server.');
+        addToast('success', '✅ Request Authorized', 'Valid DPoP proof verified by server. Token is bound to this device.');
       } else {
         setDpopTestStatus('error');
         setDpopTestResult(`HTTP ${res.status} ${res.statusText}\n${JSON.stringify(data, null, 2)}`);
-        if (res.status === 401) {
-          addToast('error', 'Stolen Token Blocked!', `Attack prevented: ${data.error}`);
+        if (testType === 'missing') {
+          addToast('error', '🛡️ Attack Blocked!', 'Stolen token rejected — no DPoP proof provided.');
+        } else if (testType === 'forged') {
+          addToast('error', '🛡️ Attack Blocked!', 'Stolen token rejected — DPoP key does not match enrolled device.');
         } else {
           addToast('error', 'Request Failed', data.error || 'Server error');
         }
       }
     } catch (err: any) {
       setDpopTestStatus('error');
-      setDpopTestResult(`Network Error: ${err.message}`);
-      addToast('error', 'Test Error', 'Failed to connect to backend.');
+      setDpopTestResult(`Error: ${err.message}`);
+      addToast('error', 'Test Error', err.message || 'Failed to connect to backend.');
     }
   };
 
