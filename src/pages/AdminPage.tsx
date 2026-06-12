@@ -110,7 +110,12 @@ export const AdminPage: React.FC = () => {
 
   const fetchOperations = async () => {
     try {
-      const res = await fetch(`${API_URL}/admin/operations`);
+      const token = localStorage.getItem('token');
+      const res = await fetch(`${API_URL}/admin/operations`, {
+        headers: {
+          'Authorization': token ? `Bearer ${token}` : ''
+        }
+      });
       if (res.ok) {
         const data = await res.json();
         const ops = (data.operations || []).map(normalizeOperation);
