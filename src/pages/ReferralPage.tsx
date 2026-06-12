@@ -131,6 +131,7 @@ export const ReferralPage: React.FC = () => {
       return;
     }
 
+    setIsGenerating(true);
     try {
       const token = localStorage.getItem('token');
       const res = await fetch(`${API_URL}/referral/links/generate`, {
@@ -145,27 +146,34 @@ export const ReferralPage: React.FC = () => {
         })
       });
       if (res.ok) {
-        addToast('success', 'Link Generated', `Your referral link for ${platform} has been registered.`);
-        fetchReferralLinks();
+        const data = await res.json();
+        const newLink: ReferralLink = data.link;
+        setLinks(prev => [newLink, ...prev]);
+        setStats(prev => ({
+          ...prev,
+          total: prev.total + 1,
+          pending: prev.pending + 1,
+          byPlatform: {
+            ...prev.byPlatform,
+            [platform]: (prev.byPlatform[platform as keyof typeof prev.byPlatform] || 0) + 1
+          }
+        }));
+        addToast('success', 'Link Created', `Your ${platform} invite link is ready — copy it from the table below.`);
       } else {
         const data = await res.json();
-        if (res.status === 409) {
-          addToast('warning', 'Link Exists', data.error || `Referral link for ${platform} already exists. See your links below.`);
-          fetchReferralLinks();
-        } else {
-          addToast('error', 'Generation Failed', data.error || 'Server error.');
-        }
+        addToast('error', 'Generation Failed', data.error || 'Server error.');
       }
     } catch {
-      // Mock local success
+      // Mock local success when backend is unreachable
       const newMockCode = `REF-${platform.toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
       const newLink: ReferralLink = {
         id: Math.random().toString(),
         code: newMockCode,
+        url: `${window.location.origin}/register?ref=${newMockCode}`,
         platform,
         clickCount: 0,
         status: 'pending',
-        reward: 100,
+        reward: 0,
         createdAt: new Date().toISOString()
       };
       setLinks(prev => [newLink, ...prev]);
