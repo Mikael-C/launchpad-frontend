@@ -178,7 +178,7 @@ export const AdminPage: React.FC = () => {
 
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.walletAddress}` }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
       });
       if (res.ok) {
         setKillSwitchActive(activate);
@@ -204,7 +204,7 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/projects/${projectId}/approve`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.walletAddress}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` },
         body: JSON.stringify({
           action: approve ? 'approved' : 'rejected',
           adminNotes: 'Reviewed and certified by multi-sig super admins.'
@@ -243,7 +243,7 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/admin/operations/propose`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${walletAddress}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` },
         body: JSON.stringify({
           operationType: opType,
           description: opDescription,
@@ -300,7 +300,7 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/admin/operations/${opId}/approve`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${walletAddress}` }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
       });
       if (res.ok) {
         addToast('success', 'Signature Added', 'Your approval signature has been recorded.');
@@ -342,7 +342,7 @@ export const AdminPage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/admin/operations/${opId}/execute`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.walletAddress}` }
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` }
       });
       if (res.ok) {
         addToast('success', 'Operation Executed', 'Operation completed and changes written to blockchain.');
@@ -392,7 +392,7 @@ export const AdminPage: React.FC = () => {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : `Bearer ${user.walletAddress}`
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify({
           projectId: wlProjectId,

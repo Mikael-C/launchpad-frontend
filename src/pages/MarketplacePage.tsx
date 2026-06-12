@@ -184,7 +184,7 @@ export const MarketplacePage: React.FC = () => {
     try {
       const res = await fetch(`${MARKETPLACE_URL}/upvote`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.walletAddress}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` },
         body: JSON.stringify({ projectId })
       });
       if (res.ok) {

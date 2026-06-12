@@ -212,7 +212,7 @@ export const LaunchpadPage: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/whitelist/add`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.walletAddress}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` },
         body: JSON.stringify({
           projectId: selectedProject.id,
           walletAddress: user.walletAddress,
@@ -263,7 +263,7 @@ export const LaunchpadPage: React.FC = () => {
 
       const res = await fetch(`${API_URL}/invest`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.walletAddress}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token') || ''}` },
         body: JSON.stringify({
           projectId: selectedProject.id,
           amount: amountNum,
