@@ -122,30 +122,25 @@ export const AccountPage: React.FC = () => {
 
       if (res.ok) {
         const resData = await res.json();
-        // Adjust local states
+
+        // Use real balances from backend response
+        if (resData.newBalance) {
+          setUsdcBalance(resData.newBalance.usdcBalance || 0);
+          setUsdtBalance(resData.newBalance.usdtBalance || 0);
+          setDaiBalance(resData.newBalance.daiBalance || 0);
+        }
+
         if (activeTab === 'deposit') {
-          if (stablecoinType === 'USDC') setUsdcBalance(prev => prev + val);
-          else if (stablecoinType === 'USDT') setUsdtBalance(prev => prev + val);
-          else setDaiBalance(prev => prev + val);
           addToast('success', 'Deposit Completed', `Added $${val} ${stablecoinType} to your account balance.`);
 
           // Show referral reward notification
           if (resData.referralReward) {
+            // Refetch balances to include the reward
             setUsdcBalance(prev => prev + resData.referralReward.reward);
             addToast('success', '🎉 Referral Reward!', `You and your referrer each earned $${resData.referralReward.reward} USDC!`);
             localStorage.removeItem('referral_code');
           }
         } else {
-          // Check balances
-          const currentBal = stablecoinType === 'USDC' ? usdcBalance : stablecoinType === 'USDT' ? usdtBalance : daiBalance;
-          if (val > currentBal) {
-            addToast('error', 'Insufficient Funds', `You do not have enough $${stablecoinType} for this operation.`);
-            setIsLoading(false);
-            return;
-          }
-          if (stablecoinType === 'USDC') setUsdcBalance(prev => prev - val);
-          else if (stablecoinType === 'USDT') setUsdtBalance(prev => prev - val);
-          else setDaiBalance(prev => prev - val);
           addToast('success', 'Withdrawal/Transfer Completed', `Deducted $${val} ${stablecoinType}.`);
         }
 

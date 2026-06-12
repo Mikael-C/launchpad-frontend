@@ -48,10 +48,10 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Mock Stablecoin balances
-  const [usdcBalance, setUsdcBalance] = useState<number>(5000);
-  const [usdtBalance, setUsdtBalance] = useState<number>(2500);
-  const [daiBalance, setDaiBalance] = useState<number>(1000);
+  // Stablecoin balances (fetched from backend)
+  const [usdcBalance, setUsdcBalance] = useState<number>(0);
+  const [usdtBalance, setUsdtBalance] = useState<number>(0);
+  const [daiBalance, setDaiBalance] = useState<number>(0);
 
   // User state
   const [user, setUser] = useState<UserState>({
@@ -93,6 +93,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }));
     }
   }, []);
+
+  // Fetch real balances from backend when user is connected
+  useEffect(() => {
+    if (!user.isConnected || !user.walletAddress) return;
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    fetch(`${API_URL}/account/balance`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (data) {
+          setUsdcBalance(data.usdcBalance || 0);
+          setUsdtBalance(data.usdtBalance || 0);
+          setDaiBalance(data.daiBalance || 0);
+        }
+      })
+      .catch(() => { /* balances stay at 0 until backend responds */ });
+  }, [user.isConnected, user.walletAddress]);
 
   // Capture referral code from URL (?ref=CODE) and track the click
   useEffect(() => {
