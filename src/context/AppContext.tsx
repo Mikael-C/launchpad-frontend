@@ -94,6 +94,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  // Capture referral code from URL (?ref=CODE) and track the click
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const refCode = params.get('ref');
+    if (refCode) {
+      localStorage.setItem('referral_code', refCode);
+
+      // Register the click on the referrer's link
+      fetch(`${API_URL}/referral/track`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: refCode })
+      }).catch(() => { /* click tracking is best-effort */ });
+
+      // Clean the URL without reload
+      const cleanUrl = window.location.pathname;
+      window.history.replaceState({}, '', cleanUrl);
+    }
+  }, []);
+
   const connectWallet = (address: string, role: 'user' | 'admin' | 'super_admin' = 'user') => {
     localStorage.setItem('wallet_address', address);
     localStorage.setItem('wallet_role', role);
@@ -142,6 +162,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       localStorage.setItem('token', token);
       localStorage.setItem('wallet_address', address);
       localStorage.setItem('wallet_role', backendUser.role);
+
+      // Auto-register referral if user arrived via referral link
+      const refCode = localStorage.getItem('referral_code');
+      if (refCode) {
+        try {
+          await fetch(`${API_URL}/referral/register`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ code: refCode })
+          });
+          localStorage.removeItem('referral_code');
+        } catch (e) {
+          console.warn('Referral registration failed:', e);
+        }
+      }
 
       setUser(prev => ({
         ...prev,

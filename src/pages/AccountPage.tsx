@@ -81,32 +81,57 @@ export const AccountPage: React.FC = () => {
 
     setIsLoading(true);
     try {
+      const token = localStorage.getItem('token');
       let endpoint = '';
       let body: any = { walletAddress: user.walletAddress, amount: val, stablecoinType };
+
+      // Sign the action message with MetaMask
+      try {
+        const ethersInstance = await import('ethers');
+        const browserProvider = new ethersInstance.BrowserProvider((window as any).ethereum);
+        const signer = await browserProvider.getSigner();
+        const signMessage = `Authorize ${activeTab} of ${val} ${stablecoinType} on Launchpad Platform. Nonce: ${Date.now()}`;
+        const sig = await signer.signMessage(signMessage);
+        body.signature = sig;
+        body.message = signMessage;
+      } catch (signErr) {
+        // If MetaMask not available, proceed without signature (backend will simulate)
+        console.warn('Wallet signature skipped:', signErr);
+      }
 
       if (activeTab === 'deposit') {
         endpoint = `${API_URL}/account/deposit`;
       } else if (activeTab === 'withdraw') {
         endpoint = `${API_URL}/account/withdraw`;
-        body.recipientAddress = destAddress || '0xWhitelistedAddress';
+        body.toAddress = destAddress || user.walletAddress;
       } else {
         endpoint = `${API_URL}/account/transfer`;
-        body.recipientAddress = destAddress;
+        body.projectId = destAddress;
       }
 
       const res = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
         body: JSON.stringify(body)
       });
 
       if (res.ok) {
+        const resData = await res.json();
         // Adjust local states
         if (activeTab === 'deposit') {
           if (stablecoinType === 'USDC') setUsdcBalance(prev => prev + val);
           else if (stablecoinType === 'USDT') setUsdtBalance(prev => prev + val);
           else setDaiBalance(prev => prev + val);
           addToast('success', 'Deposit Completed', `Added $${val} ${stablecoinType} to your account balance.`);
+
+          // Show referral reward notification
+          if (resData.referralReward) {
+            setUsdcBalance(prev => prev + resData.referralReward.reward);
+            addToast('success', '🎉 Referral Reward!', `You and your referrer each earned $${resData.referralReward.reward} USDC!`);
+          }
         } else {
           // Check balances
           const currentBal = stablecoinType === 'USDC' ? usdcBalance : stablecoinType === 'USDT' ? usdtBalance : daiBalance;

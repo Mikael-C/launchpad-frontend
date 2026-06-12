@@ -57,14 +57,6 @@ export const ReferralPage: React.FC = () => {
   // SSE setup for real-time referral stats
   useEffect(() => {
     if (!user.isConnected || !user.walletAddress) {
-      setLinks([]);
-      setStats({
-        total: 0,
-        successful: 0,
-        pending: 0,
-        rewards: 0,
-        byPlatform: { telegram: 0, twitter: 0, facebook: 0 }
-      });
       return;
     }
 
@@ -100,28 +92,39 @@ export const ReferralPage: React.FC = () => {
     if (!user.walletAddress) return;
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch(`${API_URL}/referral/links?wallet=${user.walletAddress}`, {
-        headers: {
-          'Authorization': token ? `Bearer ${token}` : ''
-        }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setLinks(data.links || []);
-      }
-    } catch {
-      // Mock links if API fails
-      setLinks([
-        { id: '1', code: 'AQUATELE', platform: 'telegram', clickCount: 12, status: 'completed', reward: 100, createdAt: new Date(Date.now() - 86400000).toISOString() },
-        { id: '2', code: 'AQUATWIT', platform: 'twitter', clickCount: 4, status: 'pending', reward: 100, createdAt: new Date().toISOString() }
+      if (!token) throw new Error('No auth token');
+
+      const [linksRes, statsRes] = await Promise.all([
+        fetch(`${API_URL}/referral/links`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        }),
+        fetch(`${API_URL}/referral/stats`, {
+          headers: { 'Authorization': `Bearer ${token}` }
+        })
       ]);
-      setStats({
-        total: 2,
-        successful: 1,
-        pending: 1,
-        rewards: 100,
-        byPlatform: { telegram: 1, twitter: 1, facebook: 0 }
-      });
+
+      if (!linksRes.ok) throw new Error(`Links fetch failed: ${linksRes.status}`);
+
+      const linksData = await linksRes.json();
+      setLinks(linksData.links || []);
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setStats({
+          total: statsData.total || 0,
+          successful: statsData.successful || 0,
+          pending: statsData.pending || 0,
+          rewards: statsData.totalRewards || 0,
+          byPlatform: {
+            telegram: statsData.byPlatform?.telegram?.total || 0,
+            twitter: statsData.byPlatform?.twitter?.total || 0,
+            facebook: statsData.byPlatform?.facebook?.total || 0
+          }
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to fetch referral links:', err);
+      // Keep whatever links are already in state rather than clearing them
     }
   };
 
